@@ -7,11 +7,14 @@ type Todos = Database['public']['Tables']['todos']['Row']
 export default function TodoList({ session }: { session: Session }) {
   const supabase = useSupabaseClient<Database>()
   const [todos, setTodos] = useState<Todos[]>([])
+  const [filteredTodos, setFilteredTodos] = useState<Todos[]>([])
   const [newTaskText, setNewTaskText] = useState('')
   const [errorText, setErrorText] = useState('')
+  const [filter, setFilter] = useState('assigned_to_me')
 
   const user = session.user
 
+  // Fetch Todos from Supabase
   useEffect(() => {
     const fetchTodos = async () => {
       const { data: todos, error } = await supabase
@@ -19,13 +22,39 @@ export default function TodoList({ session }: { session: Session }) {
         .select('*')
         .order('id', { ascending: true })
 
-      if (error) console.log('error', error)
-      else setTodos(todos)
+      if (error) {
+        console.log('Error fetching tasks:', error)
+      } else {
+        setTodos(todos)
+      }
     }
 
     fetchTodos()
   }, [supabase])
 
+  // Apply filter logic when todos or filter changes
+  useEffect(() => {
+    const filterTasks = () => {
+      return todos.filter((task) => {
+        switch (filter) {
+          case 'assigned_to_me':
+            return task.assigned_to === user.id
+          case 'due_today':
+            return new Date(task.due_date).toDateString() === new Date().toDateString()
+          case 'overdue':
+            return new Date(task.due_date) < new Date() && !task.is_complete
+          case 'created_by_me':
+            return task.user_id === user.id
+          default:
+            return true
+        }
+      })
+    }
+
+    setFilteredTodos(filterTasks())
+  }, [todos, filter, user.id])
+
+  // Add a new task to Supabase
   const addTodo = async (taskText: string) => {
     let task = taskText.trim()
     if (task.length) {
@@ -38,24 +67,25 @@ export default function TodoList({ session }: { session: Session }) {
       if (error) {
         setErrorText(error.message)
       } else {
-        setTodos([...todos, todo])
+        setTodos([...todos, todo]) // Update todos with new task
         setNewTaskText('')
       }
     }
   }
 
+  // Delete task from Supabase
   const deleteTodo = async (id: number) => {
     try {
       await supabase.from('todos').delete().eq('id', id).throwOnError()
-      setTodos(todos.filter((x) => x.id != id))
+      setTodos(todos.filter((x) => x.id !== id)) // Remove deleted task from list
     } catch (error) {
-      console.log('error', error)
+      console.log('Error deleting task:', error)
     }
   }
 
   return (
     <div className="w-full">
-      <h1 className="mb-12">Todo List.</h1>
+      <h1 className="mb-12">Todo List</h1>
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -66,7 +96,7 @@ export default function TodoList({ session }: { session: Session }) {
         <input
           className="rounded w-full p-2"
           type="text"
-          placeholder="make coffee"
+          placeholder="Add a new task..."
           value={newTaskText}
           onChange={(e) => {
             setErrorText('')
@@ -78,9 +108,38 @@ export default function TodoList({ session }: { session: Session }) {
         </button>
       </form>
       {!!errorText && <Alert text={errorText} />}
+
+      {/* Filter Buttons */}
+      <div className="mb-4">
+        <button
+          onClick={() => setFilter('assigned_to_me')}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Assigned to Me
+        </button>
+        <button
+          onClick={() => setFilter('due_today')}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Due Today
+        </button>
+        <button
+          onClick={() => setFilter('overdue')}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Overdue
+        </button>
+        <button
+          onClick={() => setFilter('created_by_me')}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Created by Me
+        </button>
+      </div>
+
       <div className="bg-white shadow overflow-hidden rounded-md">
         <ul>
-          {todos.map((todo) => (
+          {filteredTodos.map((todo) => (
             <Todo key={todo.id} todo={todo} onDelete={() => deleteTodo(todo.id)} />
           ))}
         </ul>
@@ -105,7 +164,7 @@ const Todo = ({ todo, onDelete }: { todo: Todos; onDelete: () => void }) => {
 
       if (data) setIsCompleted(data.is_complete)
     } catch (error) {
-      console.log('error', error)
+      console.log('Error toggling task completion:', error)
     }
   }
 
@@ -118,7 +177,7 @@ const Todo = ({ todo, onDelete }: { todo: Todos; onDelete: () => void }) => {
         <div>
           <input
             className="cursor-pointer"
-            onChange={(e) => toggle()}
+            onChange={() => toggle()}
             type="checkbox"
             checked={isCompleted ? true : false}
           />
