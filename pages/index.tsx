@@ -1,7 +1,91 @@
 import Head from 'next/head'
 import { useSession, useSupabaseClient } from '@supabase/auth-helpers-react'
 import { Auth, ThemeSupa } from '@supabase/auth-ui-react'
-import TodoList from '@/components/TodoList'
+import { useState, useEffect } from 'react'
+
+const TodoForm = ({ session, supabase }: { session: any, supabase: any }) => {
+  const [task, setTask] = useState('')
+  const [assignedTo, setAssignedTo] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [users, setUsers] = useState<any[]>([])
+
+  useEffect(() => {
+    // Fetch users from Supabase
+    const fetchUsers = async () => {
+      const { data, error } = await supabase.from('users').select('id, username')
+      if (error) {
+        console.error('Error fetching users:', error)
+      } else {
+        setUsers(data)
+      }
+    }
+
+    fetchUsers()
+  }, [supabase])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Insert new task into the database
+    const { error } = await supabase.from('todos').insert([
+      {
+        task,
+        assigned_to: assignedTo,
+        due_date: dueDate,
+        user_id: session.user.id // Ensure tasks are linked to the logged-in user
+      }
+    ])
+
+    if (error) {
+      console.error('Error adding task:', error)
+    } else {
+      setTask('')
+      setAssignedTo('')
+      setDueDate('')
+      alert('Task added successfully!')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="w-full max-w-sm mx-auto p-4 bg-white shadow rounded">
+      <h2 className="text-xl text-center mb-4">Create Task</h2>
+      <input
+        type="text"
+        placeholder="Task"
+        value={task}
+        onChange={(e) => setTask(e.target.value)}
+        required
+        className="w-full mb-4 p-2 border border-gray-300 rounded"
+      />
+      <select
+        value={assignedTo}
+        onChange={(e) => setAssignedTo(e.target.value)}
+        required
+        className="w-full mb-4 p-2 border border-gray-300 rounded"
+      >
+        <option value="">Assign to...</option>
+        {users.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.username}
+          </option>
+        ))}
+      </select>
+      <input
+        type="date"
+        value={dueDate}
+        onChange={(e) => setDueDate(e.target.value)}
+        required
+        className="w-full mb-4 p-2 border border-gray-300 rounded"
+      />
+      <button
+        type="submit"
+        className="w-full p-2 bg-blue-500 text-white rounded"
+      >
+        Add Task
+      </button>
+    </form>
+  )
+}
 
 export default function Home() {
   const session = useSession()
@@ -18,13 +102,11 @@ export default function Home() {
       <div className="w-full h-full bg-200">
         {!session ? (
           <div className="min-w-full min-h-screen flex items-center justify-center">
-            <div className="w-full h-full flex justify-center items-center p-4">
-              <div className="w-full h-full sm:h-auto sm:w-2/5 max-w-sm p-5 bg-white shadow flex flex-col text-base">
-                <span className="font-sans text-4xl text-center pb-2 mb-1 border-b mx-4 align-center">
-                  Login
-                </span>
-                <Auth supabaseClient={supabase} appearance={{ theme: ThemeSupa }} theme="dark" />
-              </div>
+            <div className="w-full h-full sm:h-auto sm:w-2/5 max-w-sm p-5 bg-white shadow flex flex-col text-base">
+              <span className="font-sans text-4xl text-center pb-2 mb-1 border-b mx-4 align-center">
+                Login
+              </span>
+              <Auth supabaseClient={supabase} appearance={{ theme: ThemeSupa }} theme="dark" />
             </div>
           </div>
         ) : (
@@ -32,7 +114,7 @@ export default function Home() {
             className="w-full h-full flex flex-col justify-center items-center p-4"
             style={{ minWidth: 250, maxWidth: 600, margin: 'auto' }}
           >
-            <TodoList session={session} />
+            <TodoForm session={session} supabase={supabase} />
             <button
               className="btn-black w-full mt-12"
               onClick={async () => {
